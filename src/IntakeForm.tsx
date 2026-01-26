@@ -5,10 +5,15 @@ interface IntakeFormProps {
   onCancel: () => void;
 }
 
+interface FileWithPreview {
+  file: File;
+  previewUrl: string;
+}
+
 const IntakeForm: React.FC<IntakeFormProps> = ({ onCancel }) => {
   const [clientId, setClientId] = useState('');
   const [formStep, setFormStep] = useState(1);
-  const [files, setFiles] = useState<File[]>([]);
+  const [files, setFiles] = useState<FileWithPreview[]>([]);
   const [isSubmitted, setIsSubmitted] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -27,6 +32,10 @@ const IntakeForm: React.FC<IntakeFormProps> = ({ onCancel }) => {
   useEffect(() => {
     const randomStr = Math.random().toString(36).substring(2, 6).toUpperCase();
     setClientId(`HOTS-${randomStr}`);
+
+    return () => {
+      files.forEach(({ previewUrl }) => URL.revokeObjectURL(previewUrl));
+    };
   }, []);
 
   const considerations = [
@@ -54,7 +63,7 @@ SPECIAL CONSIDERATIONS:
 ${formData.specialConsiderations.length > 0 ? formData.specialConsiderations.join(', ') : 'None'}
 
 UPLOADED FILES:
-${files.length > 0 ? files.map(f => `- ${f.name}`).join('\n') : 'No images uploaded'}
+${files.length > 0 ? files.map(f => `- ${f.file.name}`).join('\n') : 'No images uploaded'}
 
 ---
 TASK FOR AI:
@@ -92,12 +101,20 @@ Act as a Senior Construction Estimator. Based on the scope above:
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      setFiles(prev => [...prev, ...Array.from(e.target.files!)]);
+      const newFiles = Array.from(e.target.files).map(file => ({
+        file,
+        previewUrl: URL.createObjectURL(file)
+      }));
+      setFiles(prev => [...prev, ...newFiles]);
     }
   };
 
   const removeFile = (index: number) => {
-    setFiles(prev => prev.filter((_, i) => i !== index));
+    setFiles(prev => {
+      const fileToRemove = prev[index];
+      URL.revokeObjectURL(fileToRemove.previewUrl);
+      return prev.filter((_, i) => i !== index);
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -114,7 +131,7 @@ Act as a Senior Construction Estimator. Based on the scope above:
     formDataToSend.append('Address', formData.address);
     formDataToSend.append('AI_PROMPT_DATA', generateAIPrompt());
 
-    files.forEach((file) => {
+    files.forEach(({ file }) => {
       formDataToSend.append('attachment', file);
     });
 
@@ -313,18 +330,27 @@ Act as a Senior Construction Estimator. Based on the scope above:
                 </div>
                 {files.length > 0 && (
                   <div className="mt-5 grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {files.map((file, idx) => (
-                      <div key={idx} className="relative group rounded-xl overflow-hidden border-2 border-slate-200 aspect-square bg-slate-50">
-                        <div className="w-full h-full flex flex-col items-center justify-center p-3 text-center">
-                          <ImageIcon className="h-10 w-10 text-slate-400 mb-2" />
-                          <span className="text-xs text-slate-500 break-all leading-tight font-medium">{file.name}</span>
+                    {files.map(({ file, previewUrl }, idx) => (
+                      <div key={idx} className="relative group rounded-xl overflow-hidden border-2 border-slate-200 aspect-square bg-slate-50 shadow-sm hover:shadow-md transition-all">
+                        <img
+                          src={previewUrl}
+                          alt={file.name}
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="absolute bottom-0 left-0 right-0 p-2">
+                            <span className="text-xs text-white break-all leading-tight font-medium line-clamp-2">
+                              {file.name}
+                            </span>
+                          </div>
                         </div>
                         <button
                           type="button"
                           onClick={() => removeFile(idx)}
-                          className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all shadow-md"
+                          className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-all shadow-lg"
+                          title="Remove image"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <X className="h-4 w-4" />
                         </button>
                       </div>
                     ))}
